@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ベーカーズ％算出 → 自動換算ツール</title>
+<style>
+  :root{--bg:#f7f7fb;--card:#fff;--ink:#1f2937;--muted:#6b7280;--accent:#2563eb;--danger:#ef4444}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Meiryo,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  .container{max-width:1080px;margin:auto;padding:20px}
+  header h1{margin:.2rem 0 0;font-size:clamp(20px,3.5vw,32px)}
+  header p{margin:.2rem 0 0;color:var(--muted)}
+  .card{background:var(--card);border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:16px}
+  .grid{display:grid;gap:12px}
+  @media(min-width:760px){.grid-2{grid-template-columns:1fr 1fr}}
+  label{font-size:.9rem;color:var(--muted)}
+  input[type="number"], input[type="text"], select{width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;font-size:1rem}
+  input[type="number"]:focus, input[type="text"]:focus, select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+  .row{display:flex;gap:10px;align-items:center}
+  .row .grow{flex:1}
+  .btn{appearance:none;border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer}
+  .btn:hover{border-color:#d1d5db}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--accent)}
+  .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+  .chipbar{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{padding:6px 10px;border-radius:999px;background:#eef2ff;color:#283f8a;border:1px solid #e5e7eb;cursor:pointer}
+  .chip:hover{filter:brightness(.98)}
+  table{width:100%;border-collapse:separate;border-spacing:0}
+  thead th{position:sticky;top:0;background:#fafafa;z-index:1}
+  th,td{padding:10px;border-bottom:1px solid #eef0f4;text-align:left}
+  tbody tr:hover{background:#fafafb}
+  .right{text-align:right}
+  .muted{color:var(--muted)}
+  .warn{color:#9a3412}
+  .error{color:var(--danger)}
+  .footer{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:10px}
+  .kbd{font:700 .9rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;padding:2px 6px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb}
+  .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#f3f4f6}
+</style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>材料→ベーカーズ％算出 → 目標量に自動換算</h1>
+      <p>まず<strong>材料をグラムで入力</strong>します（粉は複数OK）。粉の合計を基準100%として<b>ベーカーズ％</b>を自動算出し、<span class="kbd">粉量</span>または<span class="kbd">生地総量</span>の目標（例：100g/150g → 400g/430g）に合わせて<b>自動換算</b>します。</p>
+    </header>
+
+    <!-- 1) 元レシピ（グラム入力） -->
+    <section class="card" aria-label="元レシピ（グラム入力）">
+      <div class="row" style="justify-content:space-between;align-items:end">
+        <div>
+          <h2 style="margin:0;font-size:1.1rem">1) 元レシピをグラムで入力</h2>
+          <p class="muted" style="margin:.2rem 0 0">粉の行の合計が基準（100%）です。その他（水・塩・油・砂糖・イーストなど）は粉合計に対する％を自動表示します。</p>
+        </div>
+        <div class="muted">Enterで次セル / <span class="kbd">Del</span>で行削除</div>
+      </div>
+      <div class="row" style="gap:8px;margin:6px 0">
+        <button class="btn" id="addFlour">粉 行を追加</button>
+        <button class="btn" id="addOther">その他 行を追加</button>
+        <button class="btn ghost" id="resetExample">例を読み込む</button>
+      </div>
+      <div style="overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:92px">区分</th>
+              <th>材料名</th>
+              <th class="right" style="width:140px">元レシピ (g)</th>
+              <th class="right" style="width:140px">ベーカーズ％</th>
+              <th style="width:64px"></th>
+            </tr>
+          </thead>
+          <tbody id="tbodyIn"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="grow">粉合計: <b id="sumFlourG">0</b> g / その他合計: <b id="sumOtherG">0</b> g / 生地総量: <b id="sumDoughG">0</b> g</div>
+        <div class="muted">粉％合計は常に 100% として扱います</div>
+      </div>
+      <div id="alerts1" style="margin-top:6px"></div>
+    </section>
+
+    <!-- 2) 目標量を指定して換算 -->
+    <section class="card grid grid-2" style="margin-top:14px" aria-label="目標量と丸め設定">
+      <div>
+        <h2 style="margin:0;font-size:1.1rem">2) 目標量を指定して換算</h2>
+        <label>計算モード</label>
+        <div class="row" role="radiogroup" aria-label="計算モード">
+          <label class="pill"><input type="radio" name="mode" value="flour" checked> 粉の重さを指定</label>
+          <label class="pill"><input type="radio" name="mode" value="dough"> 生地総量を指定</label>
+        </div>
+        <div id="targetWrap" class="grid" style="margin-top:8px">
+          <div>
+            <label id="targetLabel">粉の重さ (g)</label>
+            <input id="target" type="number" inputmode="decimal" min="0" step="0.1" value="400">
+          </div>
+          <div>
+            <label>丸め（各材料）</label>
+            <select id="roundStep">
+              <option value="0.1">0.1 g</option>
+              <option value="1" selected>1 g</option>
+              <option value="5">5 g</option>
+            </select>
+          </div>
+        </div>
+        <div class="chipbar" id="quickTargets" aria-label="クイック設定" style="margin-top:8px">
+          <span class="chip" data-v="100">100g</span>
+          <span class="chip" data-v="150">150g</span>
+          <span class="chip" data-v="400">400g</span>
+          <span class="chip" data-v="430">430g</span>
+          <span class="chip" data-v="500">500g</span>
+        </div>
+      </div>
+
+      <div>
+        <label>操作</label>
+        <div class="row" style="gap:8px">
+          <input id="recipeName" class="grow" type="text" placeholder="レシピ名（保存用）">
+          <button class="btn" id="saveRecipe">保存</button>
+          <button class="btn" id="loadRecipe">読み込み</button>
+        </div>
+        <div class="row" style="gap:8px;margin-top:8px">
+          <button class="btn" id="copyTable">結果をコピー</button>
+          <button class="btn" id="downloadCsv">CSVをダウンロード</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3) 換算結果 -->
+    <section class="card" style="margin-top:14px" aria-label="換算結果">
+      <div class="row" style="justify-content:space-between;align-items:end">
+        <div>
+          <h2 style="margin:0;font-size:1.1rem">3) 換算結果</h2>
+          <p class="muted" style="margin:.2rem 0 0">入力を変更するとリアルタイムで計算されます。</p>
+        </div>
+      </div>
+      <div style="overflow:auto;margin-top:8px">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:92px">区分</th>
+              <th>材料名</th>
+              <th class="right" style="width:140px">ベーカーズ％</th>
+              <th class="right" style="width:160px">換算後 (g)</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyOut"></tbody>
+        </table>
+      </div>
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <div>粉％合計: <b>100</b>% / その他％合計: <b id="sumOtherP">0</b>% / 合計: <b id="sumTotalP">0</b>%</div>
+          <div class="muted" id="sumNote"></div>
+        </div>
+        <div class="right">
+          <div>計算した <b>粉量</b>: <b id="outFlourG">0</b> g</div>
+          <div>計算した <b>生地総量</b>: <b id="outDoughG">0</b> g</div>
+        </div>
+      </div>
+      <div id="alerts2" style="margin-top:6px"></div>
+    </section>
+
+    <footer class="muted" style="margin:12px 4px 32px">
+      <div>丸めは各材料に適用されます。合計は丸め後の値を再集計しています。</div>
+      <div>このページはオフラインで動作します。ファイルを <span class="kbd">.html</span> として保存し、サーバーにアップロードしてください（<span class="kbd">UTF-8</span>）。</div>
+    </footer>
+  </div>
+
+<script>
+(()=>{
+  // ===== モデル =====
+  /** @type {Array<{id:string, type:'flour'|'other', name:string, grams:number}>} */
+  let items = [];
+
+  // 初期例（小さめバッチのサンプル）
+  const example = [
+    {type:'flour', name:'強力粉', grams:100},
+    {type:'other', name:'水', grams:65},
+    {type:'other', name:'塩', grams:2},
+    {type:'other', name:'ドライイースト', grams:0.3}
+  ];
+
+  // ===== util =====
+  const el = (id)=>document.getElementById(id);
+  const uid = ()=>Math.random().toString(36).slice(2,9);
+  const toNumber = (v, def=0)=>{ const n = typeof v==='number'? v : parseFloat(String(v).replace(/,/,'.')); return Number.isFinite(n)? n : def; };
+  const sum = (arr, fn)=>arr.reduce((a,x)=>a+fn(x),0);
+  const roundTo = (value, step)=>{ step = toNumber(el('roundStep').value||1,1); if(step<=0) return value; return Math.round(value/step)*step; };
+
+  // ===== ストレージ =====
+  const storageKey = 'bakers_from_grams_qol_v1';
+  const loadAll = ()=>{ try{ return JSON.parse(localStorage.getItem(storageKey)||'[]'); }catch{return []} };
+  const saveOne = (name, data)=>{ const all = loadAll(); const i = all.findIndex(r=>r.name===name); const rec = {name, data}; if(i>=0) all[i]=rec; else all.push(rec); localStorage.setItem(storageKey, JSON.stringify(all)); };
+
+  // ===== テーブル描画 =====
+  const tbodyIn = el('tbodyIn');
+  const tbodyOut = el('tbodyOut');
+
+  function renderInputTable(){
+    tbodyIn.innerHTML = '';
+    for(const r of items){
+      const tr = document.createElement('tr');
+
+      // 区分
+      const tdType = document.createElement('td');
+      const sel = document.createElement('select');
+      sel.innerHTML = '<option value="flour">粉</option><option value="other">その他</option>';
+      sel.value = r.type; sel.addEventListener('change', ()=>{ r.type=sel.value; computeAndRender(); });
+      tdType.appendChild(sel);
+
+      // 材料名
+      const tdName = document.createElement('td');
+      const inpName = document.createElement('input'); inpName.type='text'; inpName.value=r.name; inpName.placeholder=r.type==='flour'?'例: 強力粉/全粒粉':'例: 水/塩/砂糖/油';
+      inpName.addEventListener('input', ()=>{ r.name = inpName.value; });
+      tdName.appendChild(inpName);
+
+      // 元レシピ g
+      const tdG = document.createElement('td'); tdG.className='right';
+      const inpG = document.createElement('input'); inpG.type='number'; inpG.step='0.1'; inpG.min='0'; inpG.value=String(r.grams);
+      inpG.addEventListener('input', ()=>{ r.grams = toNumber(inpG.value,0); computeAndRender(); });
+      tdG.appendChild(inpG);
+
+      // ベーカーズ％（表示のみ）
+      const tdPct = document.createElement('td'); tdPct.className='right'; tdPct.dataset.id = r.id;
+
+      // 削除
+      const tdDel = document.createElement('td');
+      const btn = document.createElement('button'); btn.className='btn danger'; btn.textContent='削除';
+      btn.addEventListener('click', ()=>{ items = items.filter(x=>x.id!==r.id); computeAndRender(); });
+      tdDel.appendChild(btn);
+
+      tr.append(tdType, tdName, tdG, tdPct, tdDel);
+      tbodyIn.appendChild(tr);
+    }
+  }
+
+  function renderOutputTable(perRowPct, perRowScaled){
+    tbodyOut.innerHTML = '';
+    for(const r of items){
+      const tr = document.createElement('tr');
+      const tdType = document.createElement('td'); tdType.textContent = r.type==='flour'?'粉':'その他';
+      const tdName = document.createElement('td'); tdName.textContent = r.name;
+      const tdPct = document.createElement('td'); tdPct.className='right'; tdPct.textContent = (perRowPct.get(r.id)||0).toFixed(2).replace(/\.00$/,'');
+      const tdOut = document.createElement('td'); tdOut.className='right';
+      const g = perRowScaled.get(r.id); tdOut.textContent = g!=null? g.toLocaleString(undefined,{maximumFractionDigits:2}) : '—';
+      tr.append(tdType, tdName, tdPct, tdOut);
+      tbodyOut.appendChild(tr);
+    }
+  }
+
+  // ===== 計算 =====
+  function computeFromGrams(){
+    const flour = items.filter(r=>r.type==='flour');
+    const other = items.filter(r=>r.type==='other');
+    const flourSumG = sum(flour, r=>toNumber(r.grams,0));
+    const otherSumG = sum(other, r=>toNumber(r.grams,0));
+    const doughSumG = flourSumG + otherSumG;
+
+    let perRowPct = new Map(); // 粉合計を100%基準とした各行の％
+    let sumOtherP = 0;
+
+    if (flourSumG > 0){
+      for(const r of flour){
+        const p = 100 * (toNumber(r.grams,0) / flourSumG); // 粉内配分（合計100%）
+        perRowPct.set(r.id, p);
+      }
+      for(const r of other){
+        const p = 100 * (toNumber(r.grams,0) / flourSumG); // 粉合計に対する％
+        perRowPct.set(r.id, p); sumOtherP += p;
+      }
+    }
+
+    return { flourSumG, otherSumG, doughSumG, perRowPct, sumOtherP };
+  }
+
+  function computeScaled(){
+    const mode = /** @type {HTMLInputElement} */(document.querySelector('input[name="mode"]:checked')).value;
+    const target = toNumber(el('target').value,0);
+
+    const base = computeFromGrams();
+    let flourTotalG = 0;
+    let perRowScaled = new Map();
+
+    if (base.flourSumG <= 0){
+      return { ...base, flourTotalG:0, doughTotalG:0, perRowScaled, error:'粉のグラムが0です。粉の行に値を入力してください。' };
+    }
+
+    if (mode==='flour'){
+      flourTotalG = target; // 指定粉量
+    } else {
+      // 生地総量指定：粉量 = 総量 × (100 / (100 + その他%))
+      const totalP = 100 + base.sumOtherP;
+      flourTotalG = target * (100 / totalP);
+    }
+
+    const flour = items.filter(r=>r.type==='flour');
+    const other = items.filter(r=>r.type==='other');
+
+    // 粉内％（合計100）で配分
+    for(const r of flour){
+      const p = base.flourSumG>0 ? (toNumber(r.grams,0)/base.flourSumG*100) : 0;
+      const g = flourTotalG * (p/100);
+      perRowScaled.set(r.id, roundTo(g));
+    }
+    // その他は粉合計に対する％で配分
+    for(const r of other){
+      const p = base.perRowPct.get(r.id)||0;
+      const g = flourTotalG * (p/100);
+      perRowScaled.set(r.id, roundTo(g));
+    }
+
+    const flourSumScaled = sum(flour, r=>perRowScaled.get(r.id)||0);
+    const otherSumScaled = sum(other, r=>perRowScaled.get(r.id)||0);
+    const doughTotalG = flourSumScaled + otherSumScaled;
+
+    return { ...base, flourTotalG:roundTo(flourTotalG), doughTotalG, perRowScaled };
+  }
+
+  function computeAndRender(){
+    renderInputTable();
+
+    // 1) 入力側の％表示
+    const base = computeFromGrams();
+    for(const r of items){
+      const td = /** @type {HTMLTableCellElement} */(document.querySelector(`td[data-id="${r.id}"]`));
+      if(!td) continue;
+      const p = base.perRowPct.get(r.id);
+      td.textContent = base.flourSumG>0 && p!=null ? p.toFixed(2).replace(/\.00$/,'') : '—';
+    }
+
+    el('sumFlourG').textContent = (base.flourSumG||0).toLocaleString();
+    el('sumOtherG').textContent = (base.otherSumG||0).toLocaleString();
+    el('sumDoughG').textContent = (base.doughSumG||0).toLocaleString();
+
+    const alerts1 = el('alerts1'); alerts1.innerHTML='';
+    if (base.flourSumG<=0){ const d=document.createElement('div'); d.className='error'; d.textContent='⚠ 粉の合計が0gです。粉行に値を入れてください。'; alerts1.appendChild(d); }
+
+    // 2) スケール結果
+    const scaled = computeScaled();
+    renderOutputTable(scaled.perRowPct, scaled.perRowScaled);
+
+    el('sumOtherP').textContent = (scaled.sumOtherP||0).toFixed(1).replace(/\.0$/,'');
+    el('sumTotalP').textContent = (100 + (scaled.sumOtherP||0)).toFixed(1).replace(/\.0$/,'');
+    el('outFlourG').textContent = (scaled.flourTotalG||0).toLocaleString();
+    el('outDoughG').textContent = (scaled.doughTotalG||0).toLocaleString();
+
+    const alerts2 = el('alerts2'); alerts2.innerHTML='';
+    if (scaled.error){ const d=document.createElement('div'); d.className='error'; d.textContent='⚠ '+scaled.error; alerts2.appendChild(d); }
+
+    const mode = /** @type {HTMLInputElement} */(document.querySelector('input[name="mode"]:checked')).value;
+    const note = el('sumNote');
+    if (mode==='dough' && base.flourSumG>0){
+      const approxFlour = scaled.doughTotalG * (100/(100+base.sumOtherP));
+      note.textContent = `（参考）生地総量から逆算した粉量 ≒ ${Math.round(approxFlour).toLocaleString()} g`;
+    } else { note.textContent=''; }
+  }
+
+  // ===== 行追加 =====
+  function addRow(type){ items.push({id:uid(), type, name:type==='flour'?'小麦粉':'材料', grams:0}); computeAndRender(); }
+
+  // ===== イベント =====
+  document.getElementById('addFlour').addEventListener('click', ()=>addRow('flour'));
+  document.getElementById('addOther').addEventListener('click', ()=>addRow('other'));
+  document.getElementById('resetExample').addEventListener('click', ()=>{ setRecipe(example); el('target').value='400'; el('roundStep').value='1'; document.querySelector('input[name="mode"][value="flour"]').checked = true; computeAndRender(); });
+
+  document.querySelectorAll('input[name="mode"]').forEach(r=> r.addEventListener('change', ()=>{ el('targetLabel').textContent = (/** @type {HTMLInputElement} */(document.querySelector('input[name="mode"]:checked')).value)==='flour'?'粉の重さ (g)':'生地総量 (g)'; computeAndRender(); }));
+  el('target').addEventListener('input', computeAndRender);
+  el('roundStep').addEventListener('change', computeAndRender);
+
+  document.getElementById('quickTargets').addEventListener('click', (e)=>{ const t=e.target; if(!(t instanceof HTMLElement)) return; const v=t.dataset.v; if(!v) return; el('target').value=v; computeAndRender(); });
+
+  // 保存/読み込み/コピー/CSV
+  document.getElementById('saveRecipe').addEventListener('click', ()=>{ const name = el('recipeName').value.trim() || `レシピ${new Date().toLocaleString()}`; const data = {items, mode:document.querySelector('input[name="mode"]:checked').value, target:el('target').value, round:el('roundStep').value}; saveOne(name, data); alert('保存しました: '+name); });
+  document.getElementById('loadRecipe').addEventListener('click', ()=>{ const all=loadAll(); if(!all.length){alert('保存済みのレシピがありません'); return;} const name = prompt('読み込むレシピ名\n（候補: '+ all.map(r=>r.name).join(', ') +'）'); const f=all.find(r=>r.name===name); if(!f){alert('見つかりませんでした'); return;} setRecipe(f.data.items); (f.data.mode==='dough'? document.querySelector('input[name="mode"][value="dough"]'):document.querySelector('input[name="mode"][value="flour"]').checked=true); el('target').value=f.data.target||'400'; el('roundStep').value=f.data.round||'1'; el('recipeName').value=f.name; computeAndRender(); });
+
+  document.getElementById('copyTable').addEventListener('click', ()=>{ const base=computeFromGrams(); const scaled=computeScaled(); const rows=[['type','name','bakers_%','scaled_g']]; for(const r of items){ rows.push([ r.type, r.name, String((base.perRowPct.get(r.id)||0).toFixed(2)), String(scaled.perRowScaled.get(r.id)||0 ) ]); } rows.push(['','','flour_total_g', String(scaled.flourTotalG||0)]); rows.push(['','','dough_total_g', String(scaled.doughTotalG||0)]); const text = rows.map(a=>a.join('\t')).join('\n'); navigator.clipboard.writeText(text).then(()=>alert('クリップボードにコピーしました')); });
+
+  document.getElementById('downloadCsv').addEventListener('click', ()=>{ const base=computeFromGrams(); const scaled=computeScaled(); let csv='type,name,bakers_percent,scaled_grams\n'; for(const r of items){ const p = (base.perRowPct.get(r.id)||0).toFixed(2); const g = scaled.perRowScaled.get(r.id)||0; csv += `${r.type},${escapeCsv(r.name)},${p},${g}\n`; } csv+=`,,,\n,,flour_total_g,${scaled.flourTotalG||0}\n`; csv+=`,,,\n,,dough_total_g,${scaled.doughTotalG||0}\n`; const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(el('recipeName').value.trim()||'recipe')+'.csv'; document.body.appendChild(a); a.click(); a.remove(); });
+
+  function escapeCsv(s){ if(s.includes(',')||s.includes('"')||s.includes('\n')) return '"'+s.replace(/"/g,'""')+'"'; return s; }
+  function setRecipe(arr){ items = arr.map(x=>({id:uid(), type:x.type, name:x.name, grams:toNumber(x.grams,0)})); }
+
+  // ===== 初期化 =====
+  setRecipe(example);
+  renderInputTable();
+  computeAndRender();
+})();
+</script>
+</body>
+</html>
