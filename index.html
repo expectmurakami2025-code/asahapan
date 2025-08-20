@@ -35,10 +35,39 @@
   .right{text-align:right}
   .muted{color:var(--muted)}
   .warn{color:#9a3412}
-  .error{color:var(--danger)}
+  .error{color:#ef4444}
   .footer{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:10px}
   .kbd{font:700 .9rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;padding:2px 6px;border-radius:6px;border:1px solid #e5e7eb;background:#f9fafb}
   .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#f3f4f6}
+
+  /* === モバイル最適化: 表をカード風・タップしやすく === */
+  @media (max-width: 560px) {
+    .container { padding: 12px; }
+    header h1 { font-size: clamp(18px, 5vw, 24px); }
+
+    /* 2カラムを1カラムへ */
+    .grid-2 { grid-template-columns: 1fr !important; }
+
+    /* 入力やボタンをタップしやすく（iOS拡大防止） */
+    input, select, button { min-height: 44px; font-size: 16px; }
+
+    /* テーブルを“行ごとカード表示”に */
+    table thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tbody tr { background: #fff; border: 1px solid #eef0f4; border-radius: 12px; padding: 8px 10px; margin: 10px 0; box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+    td { border: 0; padding: 6px 0; text-align: left; }
+
+    /* 各セルの左にラベル（data-label）を表示 */
+    td[data-label] { display: grid; grid-template-columns: 9em 1fr; align-items: center; gap: 6px; }
+    td[data-label]::before {
+      content: attr(data-label);
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    /* 数字入力は横幅いっぱいに */
+    td input[type="number"], td input[type="text"], td select { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -189,6 +218,8 @@
   const toNumber = (v, def=0)=>{ const n = typeof v==='number'? v : parseFloat(String(v).replace(/,/,'.')); return Number.isFinite(n)? n : def; };
   const sum = (arr, fn)=>arr.reduce((a,x)=>a+fn(x),0);
   const roundTo = (value, step)=>{ step = toNumber(el('roundStep').value||1,1); if(step<=0) return value; return Math.round(value/step)*step; };
+  // モバイル表示用ラベル付与
+  function setLabel(td, text){ td.setAttribute('data-label', text); }
 
   // ===== ストレージ =====
   const storageKey = 'bakers_from_grams_qol_v1';
@@ -206,6 +237,7 @@
 
       // 区分
       const tdType = document.createElement('td');
+      setLabel(tdType, '区分');
       const sel = document.createElement('select');
       sel.innerHTML = '<option value="flour">粉</option><option value="other">その他</option>';
       sel.value = r.type; sel.addEventListener('change', ()=>{ r.type=sel.value; computeAndRender(); });
@@ -213,21 +245,25 @@
 
       // 材料名
       const tdName = document.createElement('td');
+      setLabel(tdName, '材料名');
       const inpName = document.createElement('input'); inpName.type='text'; inpName.value=r.name; inpName.placeholder=r.type==='flour'?'例: 強力粉/全粒粉':'例: 水/塩/砂糖/油';
       inpName.addEventListener('input', ()=>{ r.name = inpName.value; });
       tdName.appendChild(inpName);
 
       // 元レシピ g
       const tdG = document.createElement('td'); tdG.className='right';
+      setLabel(tdG, '元レシピ (g)');
       const inpG = document.createElement('input'); inpG.type='number'; inpG.step='0.1'; inpG.min='0'; inpG.value=String(r.grams);
       inpG.addEventListener('input', ()=>{ r.grams = toNumber(inpG.value,0); computeAndRender(); });
       tdG.appendChild(inpG);
 
       // ベーカーズ％（表示のみ）
       const tdPct = document.createElement('td'); tdPct.className='right'; tdPct.dataset.id = r.id;
+      setLabel(tdPct, 'ベーカーズ％');
 
       // 削除
       const tdDel = document.createElement('td');
+      setLabel(tdDel, '操作');
       const btn = document.createElement('button'); btn.className='btn danger'; btn.textContent='削除';
       btn.addEventListener('click', ()=>{ items = items.filter(x=>x.id!==r.id); computeAndRender(); });
       tdDel.appendChild(btn);
@@ -241,11 +277,23 @@
     tbodyOut.innerHTML = '';
     for(const r of items){
       const tr = document.createElement('tr');
-      const tdType = document.createElement('td'); tdType.textContent = r.type==='flour'?'粉':'その他';
-      const tdName = document.createElement('td'); tdName.textContent = r.name;
-      const tdPct = document.createElement('td'); tdPct.className='right'; tdPct.textContent = (perRowPct.get(r.id)||0).toFixed(2).replace(/\.00$/,'');
+
+      const tdType = document.createElement('td');
+      tdType.textContent = r.type==='flour'?'粉':'その他';
+      setLabel(tdType, '区分');
+
+      const tdName = document.createElement('td');
+      tdName.textContent = r.name;
+      setLabel(tdName, '材料名');
+
+      const tdPct = document.createElement('td'); tdPct.className='right';
+      tdPct.textContent = (perRowPct.get(r.id)||0).toFixed(2).replace(/\.00$/,'');
+      setLabel(tdPct, 'ベーカーズ％');
+
       const tdOut = document.createElement('td'); tdOut.className='right';
       const g = perRowScaled.get(r.id); tdOut.textContent = g!=null? g.toLocaleString(undefined,{maximumFractionDigits:2}) : '—';
+      setLabel(tdOut, '換算後 (g)');
+
       tr.append(tdType, tdName, tdPct, tdOut);
       tbodyOut.appendChild(tr);
     }
